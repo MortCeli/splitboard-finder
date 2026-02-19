@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Splitboard Finder — Offline</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1f2e;
+            color: #e8eaf0;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+        }
+        .offline-icon { font-size: 64px; margin-bottom: 24px; }
+        h1 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+        p { font-size: 15px; color: #8b93a8; line-height: 1.6; max-width: 320px; margin-bottom: 32px; }
+        .retry-btn {
+            padding: 14px 32px;
+            background: #5ba4f5;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .retry-btn:active { opacity: 0.85; transform: scale(0.97); }
+    </style>
+</head>
+<body>
+    <div class="offline-icon">&#9968;</div>
+    <h1>Du er offline</h1>
+    <p>Sjekk internettforbindelsen din og prov igjen. Turer du har sokt opp tidligere kan fortsatt vises.</p>
+    <button class="retry-btn" onclick="location.reload()">Prov igjen</button>
+</body>
+</html>

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Splitboard Finder</title>
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#1a1f2e">
+
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Splitboard">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+    <link rel="icon" type="image/svg+xml" href="/static/icons/icon-192.svg">
+
+    <meta name="format-detection" content="telephone=no">
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-brand">
+            <span class="brand-icon">⛷</span>
+            <h1>Splitboard Finder</h1>
+        </div>
+        <p class="header-subtitle">Hemsedal &middot; Jotunheimen &middot; Sunnmørsalpane</p>
+    </header>
+
+    <!-- Filters panel -->
+    <div class="filter-panel" id="filterPanel">
+        <div class="filter-toggle" id="filterToggle">
+            <span>Filtrer turer</span>
+            <span class="toggle-arrow">▼</span>
+        </div>
+        <div class="filter-body" id="filterBody">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Region</label>
+                    <select id="regionFilter">
+                        <option value="">Alle</option>
+                        <option value="Hemsedal">Hemsedal</option>
+                        <option value="Jotunheimen">Jotunheimen</option>
+                        <option value="Sunnmørsalpane">Sunnmørsalpane</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Dato</label>
+                    <input type="date" id="dateFilter">
+                </div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Maks kjøretid</label>
+                    <select id="driveFilter">
+                        <option value="2">2 timer</option>
+                        <option value="3">3 timer</option>
+                        <option value="4" selected>4 timer</option>
+                        <option value="6">6 timer</option>
+                        <option value="10">10 timer</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Vanskelighet</label>
+                    <select id="diffFilter">
+                        <option value="">Alle</option>
+                        <option value="lett">Lett</option>
+                        <option value="middels">Middels</option>
+                        <option value="krevende">Krevende</option>
+                    </select>
+                </div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-group full-width">
+                    <label>Helning: <span id="slopeLabel">15° – 30°</span></label>
+                    <div class="slope-range">
+                        <input type="range" id="minSlope" min="10" max="40" value="15" step="1">
+                        <input type="range" id="maxSlope" min="10" max="50" value="30" step="1">
+                    </div>
+                </div>
+            </div>
+            <button class="search-btn" id="searchBtn">
+                <span>🔍</span> Finn turer
+            </button>
+            <div class="location-status" id="locationStatus">
+                📍 Bruker din posisjon for kjøretid...
+            </div>
+        </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Results list -->
+    <div class="results-panel" id="resultsPanel">
+        <div class="results-header" id="resultsHeader">
+            <h2>Turforslag</h2>
+            <div class="results-toolbar">
+                <select id="sortSelect">
+                    <option value="score">Score</option>
+                    <option value="nearest">Nærmest</option>
+                    <option value="elevation">Høyest</option>
+                    <option value="gain">Mest stigning</option>
+                    <option value="danger">Lavest skredfare</option>
+                </select>
+                <span class="results-count" id="resultsCount"></span>
+            </div>
+        </div>
+        <div class="results-list" id="resultsList">
+            <div class="loading-state" id="loadingState">
+                Trykk "Finn turer" for å søke
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('SW registrert:', reg.scope))
+                .catch(err => console.log('SW feil:', err));
+        }
+    </script>
+</body>
+</html>
