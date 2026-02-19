@@ -13,6 +13,54 @@ L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/
     attribution: '&copy; <a href="https://kartverket.no">Kartverket</a>',
 }).addTo(map);
 
+// ── NVE Bratthet + utlopssoner (WMS overlay) ──
+const nveWmsUrl = 'https://gis3.nve.no/arcgis/services/wmts/Bratthet_med_utlop_2024/MapServer/WMSServer';
+
+const nveBratthet = L.tileLayer.wms(nveWmsUrl, {
+    layers: '1',
+    format: 'image/png',
+    transparent: true,
+    opacity: 0.55,
+    attribution: '&copy; <a href="https://nve.no">NVE</a>',
+});
+
+const nveUtlopKort = L.tileLayer.wms(nveWmsUrl, {
+    layers: '2',
+    format: 'image/png',
+    transparent: true,
+    opacity: 0.45,
+    attribution: '&copy; <a href="https://nve.no">NVE</a>',
+});
+
+const nveUtlopMiddels = L.tileLayer.wms(nveWmsUrl, {
+    layers: '3',
+    format: 'image/png',
+    transparent: true,
+    opacity: 0.35,
+    attribution: '&copy; <a href="https://nve.no">NVE</a>',
+});
+
+const nveUtlopLang = L.tileLayer.wms(nveWmsUrl, {
+    layers: '4',
+    format: 'image/png',
+    transparent: true,
+    opacity: 0.30,
+    attribution: '&copy; <a href="https://nve.no">NVE</a>',
+});
+
+// Layer control
+const overlays = {
+    'Bratthet (>30\u00b0)': nveBratthet,
+    'Utlop kort': nveUtlopKort,
+    'Utlop middels': nveUtlopMiddels,
+    'Utlop lang': nveUtlopLang,
+};
+
+L.control.layers(null, overlays, {
+    position: 'topright',
+    collapsed: true,
+}).addTo(map);
+
 // State
 let userLat = null;
 let userLon = null;
