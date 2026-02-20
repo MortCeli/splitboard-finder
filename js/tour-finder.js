@@ -1,4 +1,4 @@
-// ── Splitboard Finder — Tour Finder ──
+// ── Toppturfinner — Tour Finder ──
 // Filtrering, scoring og rangering av turer.
 // Bruker TOURS fra tours-data.js og API-funksjoner fra api.js.
 

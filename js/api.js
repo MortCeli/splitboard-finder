@@ -1,4 +1,4 @@
-// ── Splitboard Finder — API Module ──
+// ── Toppturfinner — API Module ──
 // Alle eksterne API-kall: vær, skredvarsel, kjøretid, soloppgang, RegObs.
 // Alle API-er har Access-Control-Allow-Origin: * og kan kalles direkte fra nettleseren.
 

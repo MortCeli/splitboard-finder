@@ -1,4 +1,4 @@
-// ── Splitboard Finder — Frontend ──
+// ── Toppturfinner — Frontend ──
 // Bruker tours-data.js, api.js og tour-finder.js (lastes før denne filen)
 
 // Map setup: center on Hemsedal/Jotunheimen area

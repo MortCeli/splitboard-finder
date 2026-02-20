@@ -1,7 +1,7 @@
-// ── Splitboard Finder — Service Worker v3 ──
+// ── Toppturfinner — Service Worker v4 ──
 // Statisk app: ingen backend-API, alle kall direkte til eksterne tjenester.
 
-const STATIC_CACHE = 'static-v3';
+const STATIC_CACHE = 'static-v4';
 const API_CACHE = 'api-v1';
 const MAP_CACHE = 'maps-v1';
 

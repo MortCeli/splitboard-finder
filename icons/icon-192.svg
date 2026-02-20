@@ -1,4 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
   <rect width="192" height="192" rx="36" fill="#1a1f2e"/>
-  <text x="96" y="125" text-anchor="middle" font-size="110" font-family="sans-serif">&#9975;</text>
+  <!-- Mountain back (darker) -->
+  <polygon points="50,145 100,55 150,145" fill="#3a4568"/>
+  <!-- Mountain front -->
+  <polygon points="30,145 85,65 140,145" fill="#4a5a8a"/>
+  <!-- Snow cap -->
+  <polygon points="85,65 75,85 85,80 95,85" fill="#e8eaf0"/>
+  <!-- Small peak right -->
+  <polygon points="110,145 145,90 170,145" fill="#354170"/>
+  <polygon points="145,90 139,100 145,97 151,100" fill="#d0d4e0"/>
+  <!-- Ground line -->
+  <rect x="20" y="142" width="152" height="6" rx="3" fill="#2a3048"/>
 </svg>

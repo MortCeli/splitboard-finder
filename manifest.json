@@ -1,7 +1,7 @@
 {
-    "name": "Splitboard Finder",
-    "short_name": "Splitboard",
-    "description": "Finn de beste splitboard-turene i Hemsedal, Jotunheimen og Sunnmorsalpane",
+    "name": "Toppturfinner",
+    "short_name": "Toppturfinner",
+    "description": "Finn de beste toppturene i Hemsedal, Jotunheimen og Sunnmorsalpane",
     "start_url": "./",
     "scope": "./",
     "display": "standalone",
