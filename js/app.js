@@ -1,10 +1,10 @@
 // ── Toppturfinner — Frontend ──
-// Bruker tours-data.js, api.js og tour-finder.js (lastes før denne filen)
+// Bruker tours-loader.js, api.js og tour-finder.js (lastes før denne filen)
 
-// Map setup: center on Hemsedal/Jotunheimen area
+// Map setup: center on Sunnmørsalpene / Jotunheimen
 const map = L.map('map', {
     zoomControl: false,
-}).setView([61.15, 8.30], 9);
+}).setView([61.8, 7.5], 8);
 
 L.control.zoom({ position: 'topright' }).addTo(map);
 
@@ -14,8 +14,7 @@ L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/
     attribution: '&copy; <a href="https://kartverket.no">Kartverket</a>',
 }).addTo(map);
 
-// ── NVE Bratthet + utlopssoner ──
-// WMTS tile-lag (forhåndsgenerert, raskere enn WMS)
+// ── NVE Bratthet + utløpssoner ──
 const nveBratthetAlle = L.tileLayer(
     'https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_med_utlop_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_med_utlop_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png', {
     opacity: 0.55,
@@ -23,42 +22,25 @@ const nveBratthetAlle = L.tileLayer(
     attribution: '&copy; <a href="https://nve.no">NVE</a> Bratthet/utl\u00f8p',
 });
 
-// WMS-lag for individuelle lag (Norge = layers 6-9)
 const nveWmsUrl = 'https://gis3.nve.no/arcgis/services/wmts/Bratthet_med_utlop_2024/MapServer/WMSServer';
 
 const nveBratthet = L.tileLayer.wms(nveWmsUrl, {
-    layers: '9',
-    format: 'image/png',
-    transparent: true,
-    opacity: 0.55,
+    layers: '9', format: 'image/png', transparent: true, opacity: 0.55,
     attribution: '&copy; <a href="https://nve.no">NVE</a>',
 });
-
 const nveUtlopKort = L.tileLayer.wms(nveWmsUrl, {
-    layers: '8',
-    format: 'image/png',
-    transparent: true,
-    opacity: 0.45,
+    layers: '8', format: 'image/png', transparent: true, opacity: 0.45,
     attribution: '&copy; <a href="https://nve.no">NVE</a>',
 });
-
 const nveUtlopMiddels = L.tileLayer.wms(nveWmsUrl, {
-    layers: '7',
-    format: 'image/png',
-    transparent: true,
-    opacity: 0.35,
+    layers: '7', format: 'image/png', transparent: true, opacity: 0.35,
     attribution: '&copy; <a href="https://nve.no">NVE</a>',
 });
-
 const nveUtlopLang = L.tileLayer.wms(nveWmsUrl, {
-    layers: '6',
-    format: 'image/png',
-    transparent: true,
-    opacity: 0.30,
+    layers: '6', format: 'image/png', transparent: true, opacity: 0.30,
     attribution: '&copy; <a href="https://nve.no">NVE</a>',
 });
 
-// Layer control
 const overlays = {
     'Bratthet + utl\u00f8p (alle)': nveBratthetAlle,
     'Bratthet (>30\u00b0)': nveBratthet,
@@ -75,10 +57,27 @@ L.control.layers(null, overlays, {
 // State
 let userLat = null;
 let userLon = null;
-let markers = [];
+let mapLayers = [];      // alt som legges på kartet (markers, linjer)
 let userMarker = null;
 let tourResults = [];
 let currentSort = 'score';
+
+// ── KAST-farger ──
+const KAST_COLORS = {
+    1: '#4ade80',  // grønn
+    2: '#facc15',  // gul
+    3: '#f87171',  // rød
+};
+
+const KAST_LABELS = {
+    1: 'KAST 1 (enkel)',
+    2: 'KAST 2 (middels)',
+    3: 'KAST 3 (krevende)',
+};
+
+function kastColor(kast) {
+    return KAST_COLORS[kast] || '#5ba4f5';
+}
 
 // ── Custom marker icons ──
 function createIcon(color) {
@@ -149,10 +148,37 @@ function getLocation() {
     }
 }
 
-// ── Clear markers ──
-function clearMarkers() {
-    markers.forEach(m => map.removeLayer(m));
-    markers = [];
+// ── Clear map layers ──
+function clearMapLayers() {
+    mapLayers.forEach(m => map.removeLayer(m));
+    mapLayers = [];
+}
+
+// ── Tegn tur-rute på kartet ──
+function drawRoute(tour, color, weight, dashArray) {
+    if (!tour.routeCoords || tour.routeCoords.length < 2) return;
+
+    // Hovedrute
+    const line = L.polyline(tour.routeCoords, {
+        color: color,
+        weight: weight,
+        opacity: 0.8,
+        dashArray: dashArray || null,
+    }).addTo(map);
+    mapLayers.push(line);
+
+    // Nedkjøringsalternativer (stiplet)
+    if (tour.altRoutes) {
+        for (const alt of tour.altRoutes) {
+            const altLine = L.polyline(alt.routeCoords, {
+                color: kastColor(alt.kast || tour.kast),
+                weight: weight - 1,
+                opacity: 0.6,
+                dashArray: '8,6',
+            }).addTo(map);
+            mapLayers.push(altLine);
+        }
+    }
 }
 
 // ── Sorting ──
@@ -174,13 +200,16 @@ function sortResults(results, key) {
         case 'danger':
             sorted.sort((a, b) => (a.avalanche.danger_level || 99) - (b.avalanche.danger_level || 99));
             break;
+        case 'kast':
+            sorted.sort((a, b) => (a.tour.kast || 1) - (b.tour.kast || 1));
+            break;
     }
     return sorted;
 }
 
-// ── Render results (bruker lagret tourResults) ──
+// ── Render results ──
 function renderResults() {
-    clearMarkers();
+    clearMapLayers();
 
     const list = document.getElementById('resultsList');
     const count = document.getElementById('resultsCount');
@@ -200,44 +229,43 @@ function renderResults() {
     sorted.forEach((r) => {
         const tour = r.tour;
         const score = r.total_score;
+        const kColor = kastColor(tour.kast);
 
-        // Map marker at summit
+        // Tegn rute på kartet
+        drawRoute(tour, kColor, 3);
+
+        // Topp-markør
         const marker = L.marker(
             [tour.summit.lat, tour.summit.lon],
             { icon: scoreIcon(score) }
         ).addTo(map);
 
+        const altCount = tour.altRoutes ? tour.altRoutes.length : 0;
         const popupHtml = `
             <div class="popup-title">${tour.name}</div>
             <span class="popup-badge" style="background:${(r.avalanche.danger_level || 0) <= 2 ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}">
                 ${r.avalanche.description || 'Ingen skreddata'}
             </span>
             <div class="popup-detail">
-                \u{1F3D4} ${tour.summit.elevation}m &nbsp; \u2197 ${tour.vertical_gain}m &nbsp; \u26F0 ${tour.slope_avg_deg}\u00b0
+                \u{1F3D4} ${tour.summit.elevation}m &nbsp; \u2197 ${tour.vertical_gain}m &nbsp;
+                <span style="color:${kColor}">\u25CF KAST ${tour.kast || '?'}</span>
             </div>
             <div class="popup-detail">${r.weather.description || ''}</div>
             ${r.sunrise ? `<div class="popup-detail">\u2600\uFE0F ${r.sunrise.sunrise}\u2013${r.sunrise.sunset} (${r.sunrise.daylight_hours}t)</div>` : ''}
             ${r.drive_hours ? `<div class="popup-detail">\u{1F697} ~${r.drive_hours}t (${r.distance_km} km)</div>` : ''}
-            <div class="popup-detail" style="margin-top:6px;">${tour.description}</div>
+            ${altCount ? `<div class="popup-detail">${altCount} nedkj\u00f8ringsalternativ (stiplet)</div>` : ''}
         `;
 
         marker.bindPopup(popupHtml, { maxWidth: 280 });
-        markers.push(marker);
+        mapLayers.push(marker);
         bounds.push([tour.summit.lat, tour.summit.lon]);
 
-        // Start marker (parking)
+        // Start-markør (parkering)
         const startMarker = L.circleMarker(
             [tour.start.lat, tour.start.lon],
-            { radius: 4, color: '#5ba4f5', fillColor: '#5ba4f5', fillOpacity: 0.6, weight: 1 }
+            { radius: 5, color: '#5ba4f5', fillColor: '#5ba4f5', fillOpacity: 0.7, weight: 1 }
         ).addTo(map).bindPopup(`\u{1F17F} ${tour.start.name}`);
-        markers.push(startMarker);
-
-        // Line from start to summit
-        const line = L.polyline(
-            [[tour.start.lat, tour.start.lon], [tour.summit.lat, tour.summit.lon]],
-            { color: 'rgba(91,164,245,0.35)', weight: 2, dashArray: '6,4' }
-        ).addTo(map);
-        markers.push(line);
+        mapLayers.push(startMarker);
 
         // Hjelpetekster
         let driveText = '';
@@ -251,7 +279,7 @@ function renderResults() {
             sunText = `\u2600\uFE0F ${r.sunrise.sunrise}\u2013${r.sunrise.sunset} (${r.sunrise.daylight_hours}t dagslys)`;
         }
 
-        // RegObs-observasjoner for detalj-seksjonen
+        // RegObs-observasjoner
         let obsHtml = '';
         if (r.observations && r.observations.length) {
             obsHtml = '<div class="tour-detail-row"><span class="tour-detail-label">Observasjoner (RegObs):</span></div>';
@@ -274,7 +302,7 @@ function renderResults() {
             <div class="tour-meta">
                 <span>\u{1F3D4} ${tour.summit.elevation}m</span>
                 <span>\u2197 ${tour.vertical_gain}m</span>
-                <span>\u26F0 ${tour.slope_avg_deg}\u00b0</span>
+                <span style="color:${kColor}">\u25CF KAST ${tour.kast || '?'}</span>
                 <span>\u{1F4CD} ${tour.region}</span>
             </div>
             <div class="tour-info-row">${r.avalanche.description || 'Ingen skreddata'}</div>
@@ -283,41 +311,43 @@ function renderResults() {
             ${driveText ? `<div class="tour-info-row">${driveText}</div>` : ''}
             <div class="tour-expand-hint">Trykk for detaljer</div>
             <div class="tour-detail">
-                <div class="tour-detail-row">${tour.description}</div>
-                <div class="tour-detail-row"><span class="tour-detail-label">Vanskelighet:</span> ${tour.difficulty}</div>
-                <div class="tour-detail-row"><span class="tour-detail-label">Himmelretning:</span> ${tour.aspect}</div>
-                <div class="tour-detail-row"><span class="tour-detail-label">Parkering:</span> ${tour.start.name}</div>
+                <div class="tour-detail-row"><span class="tour-detail-label">KAST:</span> ${KAST_LABELS[tour.kast] || 'Ukjent'}</div>
+                <div class="tour-detail-row"><span class="tour-detail-label">Parkering:</span> ${tour.start.name} (${tour.start.lat.toFixed(4)}, ${tour.start.lon.toFixed(4)})</div>
+                <div class="tour-detail-row"><span class="tour-detail-label">Topp:</span> ${tour.summit.elevation}m (${tour.summit.lat.toFixed(4)}, ${tour.summit.lon.toFixed(4)})</div>
+                ${tour.altRoutes && tour.altRoutes.length ? `<div class="tour-detail-row"><span class="tour-detail-label">Nedkj\u00f8ring:</span> ${tour.altRoutes.length} alternativ(er) vist p\u00e5 kart (stiplet)</div>` : ''}
                 ${r.avalanche.main_text ? `<div class="tour-detail-row"><span class="tour-detail-label">Skredvarsel:</span> ${r.avalanche.main_text}</div>` : ''}
                 ${r.weather.details ? `<div class="tour-detail-row"><span class="tour-detail-label">V\u00e6r detaljer:</span> ${r.weather.details.avg_temp_c}\u00b0C, vind ${r.weather.details.avg_wind_ms} m/s, nedb\u00f8r ${r.weather.details.total_precip_mm} mm</div>` : ''}
                 ${obsHtml}
             </div>
         `;
 
-        // Klikk på kortet -> expand/collapse detaljer
         card.addEventListener('click', (e) => {
             if (e.target.closest('.map-btn')) return;
             card.classList.toggle('expanded');
         });
 
-        // Kart-knapp -> pan til topp
         card.querySelector('.map-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             document.querySelectorAll('.tour-card').forEach(c => c.classList.remove('active'));
             card.classList.add('active');
-            map.setView([tour.summit.lat, tour.summit.lon], 12);
+            // Zoom til hele ruta
+            if (tour.routeCoords && tour.routeCoords.length > 1) {
+                map.fitBounds(L.latLngBounds(tour.routeCoords), { padding: [40, 40], maxZoom: 14 });
+            } else {
+                map.setView([tour.summit.lat, tour.summit.lon], 13);
+            }
             marker.openPopup();
         });
 
         list.appendChild(card);
     });
 
-    // Fit map to results
     if (bounds.length) {
         map.fitBounds(bounds, { padding: [30, 30] });
     }
 }
 
-// ── Show results (lagrer data + renderer) ──
+// ── Show results ──
 function showResults(results) {
     tourResults = results;
     renderResults();
@@ -344,10 +374,8 @@ async function searchTours() {
             userLon,
             maxDriveHours: parseFloat(document.getElementById('driveFilter').value),
             targetDate: document.getElementById('dateFilter').value || null,
-            difficulty: document.getElementById('diffFilter').value || null,
             region: document.getElementById('regionFilter').value || null,
-            minSlope: parseFloat(document.getElementById('minSlope').value),
-            maxSlope: parseFloat(document.getElementById('maxSlope').value),
+            maxKast: parseInt(document.getElementById('kastFilter').value) || null,
             onProgress: (msg) => {
                 btn.textContent = msg;
             },
@@ -355,13 +383,46 @@ async function searchTours() {
         showResults(results);
     } catch (e) {
         list.innerHTML = `<div class="loading-state">Feil: ${e.message}</div>`;
+        console.error(e);
     } finally {
         btn.classList.remove('loading');
         btn.innerHTML = '<span>\u{1F50D}</span> Finn turer';
-        // Auto-collapse filtre etter sok pa mobil
         if (window.innerWidth < 768) {
             document.getElementById('filterPanel').classList.add('collapsed');
         }
+    }
+}
+
+// ── Vis alle turer på kartet ved oppstart ──
+function showAllToursOnMap() {
+    clearMapLayers();
+    const bounds = [];
+
+    TOURS.forEach(tour => {
+        const kColor = kastColor(tour.kast);
+
+        // Tegn rute
+        drawRoute(tour, kColor, 2);
+
+        // Topp-markør
+        const m = L.marker(
+            [tour.summit.lat, tour.summit.lon],
+            { icon: createIcon(kColor) }
+        ).addTo(map).bindPopup(`
+            <div class="popup-title">${tour.name}</div>
+            <div class="popup-detail">
+                \u{1F3D4} ${tour.summit.elevation}m &nbsp; \u2197 ${tour.vertical_gain}m &nbsp;
+                <span style="color:${kColor}">\u25CF KAST ${tour.kast || '?'}</span>
+            </div>
+            <div class="popup-detail">\u{1F17F} ${tour.start.name}</div>
+            <div class="popup-detail" style="margin-top:6px; color: var(--accent);">Trykk "Finn turer" for v\u00e6r og skreddata</div>
+        `);
+        mapLayers.push(m);
+        bounds.push([tour.summit.lat, tour.summit.lon]);
+    });
+
+    if (bounds.length) {
+        map.fitBounds(bounds, { padding: [30, 30] });
     }
 }
 
@@ -377,21 +438,11 @@ document.getElementById('filterToggle').addEventListener('click', () => {
     document.getElementById('filterPanel').classList.toggle('collapsed');
 });
 
-// Results-panel expand/collapse ved trykk pa header (mobil)
 document.getElementById('resultsHeader').addEventListener('click', (e) => {
     if (e.target.closest('select')) return;
     if (window.innerWidth < 768) {
         document.getElementById('resultsPanel').classList.toggle('expanded-results');
     }
-});
-
-// Slope range labels
-['minSlope', 'maxSlope'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => {
-        const min = document.getElementById('minSlope').value;
-        const max = document.getElementById('maxSlope').value;
-        document.getElementById('slopeLabel').textContent = `${min}\u00b0 \u2013 ${max}\u00b0`;
-    });
 });
 
 // Set default date to tomorrow
@@ -425,25 +476,29 @@ function showInstallButton() {
     header.appendChild(btn);
 }
 
-// Detect standalone mode (allerede installert)
 if (window.matchMedia('(display-mode: standalone)').matches ||
     window.navigator.standalone === true) {
     document.body.classList.add('pwa-standalone');
 }
 
-// ── Init ──
+// ── Init: Last turer fra GeoJSON, deretter vis på kart ──
 getLocation();
 
-// Load all tours on map initially (direkte fra TOURS-array, ingen backend)
-TOURS.forEach(tour => {
-    const m = L.marker(
-        [tour.summit.lat, tour.summit.lon],
-        { icon: icons.default }
-    ).addTo(map).bindPopup(`
-        <div class="popup-title">${tour.name}</div>
-        <div class="popup-detail">\u{1F3D4} ${tour.summit.elevation}m &nbsp; \u2197 ${tour.vertical_gain}m</div>
-        <div class="popup-detail">${tour.description}</div>
-        <div class="popup-detail" style="margin-top:6px; color: var(--accent);">Trykk "Finn turer" for v\u00e6r og skreddata</div>
-    `);
-    markers.push(m);
+loadTours().then(() => {
+    showAllToursOnMap();
+    // Oppdater region-filter med faktiske regioner fra data
+    const regions = [...new Set(TOURS.map(t => t.region))].sort();
+    const regionSelect = document.getElementById('regionFilter');
+    regions.forEach(r => {
+        if (r && !regionSelect.querySelector(`option[value="${r}"]`)) {
+            const opt = document.createElement('option');
+            opt.value = r;
+            opt.textContent = r;
+            regionSelect.appendChild(opt);
+        }
+    });
+}).catch(err => {
+    console.error('Feil ved lasting av turer:', err);
+    document.getElementById('resultsList').innerHTML =
+        '<div class="loading-state">Kunne ikke laste turer. Sjekk at data/turer.geojson finnes.</div>';
 });

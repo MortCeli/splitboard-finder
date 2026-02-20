@@ -1,7 +1,7 @@
-// ── Toppturfinner — Service Worker v4 ──
+// ── Toppturfinner — Service Worker v5 ──
 // Statisk app: ingen backend-API, alle kall direkte til eksterne tjenester.
 
-const STATIC_CACHE = 'static-v4';
+const STATIC_CACHE = 'static-v5';
 const API_CACHE = 'api-v1';
 const MAP_CACHE = 'maps-v1';
 
@@ -14,7 +14,8 @@ const STATIC_ASSETS = [
     'js/app.js',
     'js/api.js',
     'js/tour-finder.js',
-    'js/tours-data.js',
+    'js/tours-loader.js',
+    'data/turer.geojson',
     'manifest.json',
     'icons/icon-192.png',
 ];

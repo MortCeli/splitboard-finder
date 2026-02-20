@@ -1,6 +1,6 @@
 // ── Toppturfinner — Tour Finder ──
 // Filtrering, scoring og rangering av turer.
-// Bruker TOURS fra tours-data.js og API-funksjoner fra api.js.
+// Bruker TOURS fra tours-loader.js og API-funksjoner fra api.js.
 
 function haversineKm(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -23,10 +23,8 @@ function estimateDriveHours(distanceKm) {
  * @param {number|null} opts.userLon
  * @param {number} opts.maxDriveHours
  * @param {string|null} opts.targetDate - YYYY-MM-DD
- * @param {string|null} opts.difficulty
  * @param {string|null} opts.region
- * @param {number} opts.minSlope
- * @param {number} opts.maxSlope
+ * @param {number|null} opts.maxKast - maks KAST-kategori (1, 2 eller 3)
  * @param {function|null} opts.onProgress - callback(message) for progress updates
  * @returns {Promise<Array>}
  */
@@ -35,10 +33,8 @@ async function findTours({
     userLon = null,
     maxDriveHours = 4.0,
     targetDate = null,
-    difficulty = null,
     region = null,
-    minSlope = 15,
-    maxSlope = 30,
+    maxKast = null,
     onProgress = null,
 } = {}) {
     // Filtrer turer
@@ -48,17 +44,9 @@ async function findTours({
         tours = tours.filter(t => t.region.toLowerCase() === region.toLowerCase());
     }
 
-    // Helningsfilter
-    tours = tours.filter(t => {
-        const slope = t.slope_avg_deg || 25;
-        return slope >= minSlope && slope <= maxSlope;
-    });
-
-    // Vanskelighetsfilter
-    if (difficulty) {
-        tours = tours.filter(t =>
-            (t.difficulty || '').toLowerCase().includes(difficulty.toLowerCase())
-        );
+    // KAST-filter
+    if (maxKast) {
+        tours = tours.filter(t => (t.kast || 1) <= maxKast);
     }
 
     if (onProgress) onProgress(`Filtrert: ${tours.length} turer funnet`);
