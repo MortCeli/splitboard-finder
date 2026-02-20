@@ -12,10 +12,9 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function estimateDriveHours(airDistKm) {
-    // Norske fjellveier: luftlinje × 1.5, snitt 50 km/t
-    const roadDist = airDistKm * 1.5;
-    return roadDist / 50;
+function estimateDriveHours(roadDistKm) {
+    // Snitt 50 km/t på norske fjellveier
+    return roadDistKm / 50;
 }
 
 /**
@@ -53,27 +52,47 @@ async function findTours({
 
     if (onProgress) onProgress(`Filtrert: ${tours.length} turer funnet`);
 
-    // ── Steg 1: Beregn kjøretid (haversine-estimat, ingen API-kall) ──
+    // ── Steg 1: Beregn kjøretid med vinterstengte fjellovergangar ──
     let toursWithDrive = [];
 
-    // Sjekk om valgt dato er i vintersesong (okt-jun) for vinterstengt-varsling
-    const isWinterSeason = (() => {
+    // Finn månad for vinterstengt-sjekk
+    const targetMonth = (() => {
         const d = targetDate ? new Date(targetDate) : new Date();
-        const m = d.getMonth(); // 0-11
-        return m >= 9 || m <= 5; // okt(9)-jun(5)
+        return d.getMonth(); // 0-11
     })();
 
     if (userLat != null && userLon != null) {
         for (const tour of tours) {
-            const dist = haversineKm(userLat, userLon, tour.start.lat, tour.start.lon);
-            const driveHours = estimateDriveHours(dist);
+            const airDist = haversineKm(userLat, userLon, tour.start.lat, tour.start.lon);
+            let roadDist = airDist * 1.5; // standard estimat
+
+            // Sjekk om ruta kryssar vinterstengte fjellovergangar
+            const blockedPasses = findBlockingPasses(
+                userLat, userLon,
+                tour.start.lat, tour.start.lon,
+                targetMonth,
+            );
+
+            let winterInfo = null;
+            if (blockedPasses.length > 0) {
+                // Legg til omvegskm frå det største passet (ikkje summ, dei overlappar ofte)
+                const maxDetour = Math.max(...blockedPasses.map(p => p.detourKm));
+                roadDist += maxDetour;
+                winterInfo = {
+                    passes: blockedPasses,
+                    detourKm: maxDetour,
+                };
+            }
+
+            const driveHours = estimateDriveHours(roadDist);
+
             if (driveHours <= maxDriveHours) {
                 toursWithDrive.push({
                     tour,
-                    dist: Math.round(dist * 1.5 * 10) / 10, // veikm ≈ luftlinje × 1.5
+                    dist: Math.round(roadDist * 10) / 10,
                     driveHours: Math.round(driveHours * 10) / 10,
-                    driveSource: 'estimat',
-                    winterClosed: isWinterSeason && tour.winterClosed,
+                    driveSource: winterInfo ? 'estimat+omveg' : 'estimat',
+                    winterInfo: winterInfo,
                 });
             }
         }
@@ -83,7 +102,7 @@ async function findTours({
             dist: null,
             driveHours: null,
             driveSource: null,
-            winterClosed: isWinterSeason && tour.winterClosed,
+            winterInfo: null,
         }));
     }
 
@@ -214,7 +233,7 @@ async function findTours({
             total_score: Math.round(totalScore * 10) / 10,
             weather: weatherEval,
             avalanche: avalEval,
-            winterClosed: item.winterClosed || false,
+            winterInfo: item.winterInfo,
             distance_km: item.dist != null ? Math.round(item.dist * 10) / 10 : null,
             drive_hours: item.driveHours != null ? Math.round(item.driveHours * 10) / 10 : null,
             drive_source: item.driveSource,

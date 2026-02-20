@@ -241,9 +241,12 @@ function renderResults() {
         ).addTo(map);
 
         const altCount = tour.altRoutes ? tour.altRoutes.length : 0;
+        const winterPopup = r.winterInfo
+            ? `<div class="popup-detail" style="color:#f59e0b;font-weight:600;">\u2744\uFE0F ${r.winterInfo.passes.map(p => p.name).join(', ')} stengt</div>`
+            : '';
         const popupHtml = `
             <div class="popup-title">${tour.name}</div>
-            ${r.winterClosed ? '<div class="popup-detail" style="color:#f59e0b;font-weight:600;">\u2744\uFE0F Vinterstengt vei</div>' : ''}
+            ${winterPopup}
             <span class="popup-badge" style="background:${(r.avalanche.danger_level || 0) <= 2 ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}">
                 ${r.avalanche.description || 'Ingen skreddata'}
             </span>
@@ -253,7 +256,7 @@ function renderResults() {
             </div>
             <div class="popup-detail">${r.weather.description || ''}</div>
             ${r.sunrise ? `<div class="popup-detail">\u2600\uFE0F ${r.sunrise.sunrise}\u2013${r.sunrise.sunset} (${r.sunrise.daylight_hours}t)</div>` : ''}
-            ${r.drive_hours ? `<div class="popup-detail">\u{1F697} ~${r.drive_hours}t (${r.distance_km} km)</div>` : ''}
+            ${r.drive_hours ? `<div class="popup-detail">\u{1F697} ~${r.drive_hours}t (${r.distance_km} km${r.winterInfo ? ', inkl. omveg' : ''})</div>` : ''}
             ${altCount ? `<div class="popup-detail">${altCount} nedkj\u00f8ringsalternativ (stiplet)</div>` : ''}
         `;
 
@@ -271,13 +274,21 @@ function renderResults() {
         // Hjelpetekster
         let driveText = '';
         if (r.drive_hours) {
-            const src = r.drive_source === 'osrm' ? 'OSRM' : 'estimat';
-            driveText = `\u{1F697} ${r.drive_hours}t (${r.distance_km} km, ${src})`;
+            driveText = `\u{1F697} ${r.drive_hours}t (${r.distance_km} km${r.winterInfo ? ', inkl. omveg' : ''})`;
         }
 
         let sunText = '';
         if (r.sunrise) {
             sunText = `\u2600\uFE0F ${r.sunrise.sunrise}\u2013${r.sunrise.sunset} (${r.sunrise.daylight_hours}t dagslys)`;
+        }
+
+        // Vinterstengt fjellovergang-advarsel
+        let winterWarning = '';
+        let winterDetailHtml = '';
+        if (r.winterInfo) {
+            const passNames = r.winterInfo.passes.map(p => p.name).join(', ');
+            winterWarning = `<div class="tour-info-row winter-warning">\u2744\uFE0F Vinterstengt: ${passNames} \u2014 +${r.winterInfo.detourKm} km omveg</div>`;
+            winterDetailHtml = `<div class="tour-detail-row winter-warning"><span class="tour-detail-label">\u2744\uFE0F Vinterstengt:</span> ${passNames}. Kj\u00f8retid inkluderer ~${r.winterInfo.detourKm} km omveg.</div>`;
         }
 
         // RegObs-observasjoner
@@ -290,19 +301,13 @@ function renderResults() {
             });
         }
 
-        // Vinterstengt vei-advarsel (sesongsbevisst)
-        const isWinterClosed = r.winterClosed || false;
-        const winterWarning = isWinterClosed
-            ? `<div class="tour-info-row winter-warning">\u26A0\uFE0F Vinterstengt vei ved startpunkt</div>`
-            : '';
-
         // Result card
         const card = document.createElement('div');
         card.className = 'tour-card';
         card.dataset.tourId = tour.id;
         card.innerHTML = `
             <div class="tour-card-header">
-                <span class="tour-name">${tour.name}${isWinterClosed ? ' \u2744\uFE0F' : ''}</span>
+                <span class="tour-name">${tour.name}${r.winterInfo ? ' \u2744\uFE0F' : ''}</span>
                 <span class="tour-score ${scoreClass(score)}">${score}</span>
                 <button class="map-btn" title="Vis p\u00e5 kart">\u{1F5FA}</button>
             </div>
@@ -322,7 +327,7 @@ function renderResults() {
                 <div class="tour-detail-row"><span class="tour-detail-label">KAST:</span> ${KAST_LABELS[tour.kast] || 'Ukjent'}</div>
                 <div class="tour-detail-row"><span class="tour-detail-label">Parkering:</span> ${tour.start.name} (${tour.start.lat.toFixed(4)}, ${tour.start.lon.toFixed(4)})</div>
                 <div class="tour-detail-row"><span class="tour-detail-label">Topp:</span> ${tour.summit.elevation}m (${tour.summit.lat.toFixed(4)}, ${tour.summit.lon.toFixed(4)})</div>
-                ${isWinterClosed ? `<div class="tour-detail-row winter-warning"><span class="tour-detail-label">\u2744\uFE0F Vinterstengt:</span> Veien til startpunktet har ingen vinterdrift (kilde: Statens vegvesen NVDB)</div>` : ''}
+                ${winterDetailHtml}
                 ${tour.altRoutes && tour.altRoutes.length ? `<div class="tour-detail-row"><span class="tour-detail-label">Nedkj\u00f8ring:</span> ${tour.altRoutes.length} alternativ(er) vist p\u00e5 kart (stiplet)</div>` : ''}
                 ${r.avalanche.main_text ? `<div class="tour-detail-row"><span class="tour-detail-label">Skredvarsel:</span> ${r.avalanche.main_text}</div>` : ''}
                 ${r.weather.details ? `<div class="tour-detail-row"><span class="tour-detail-label">V\u00e6r detaljer:</span> ${r.weather.details.avg_temp_c}\u00b0C, vind ${r.weather.details.avg_wind_ms} m/s, nedb\u00f8r ${r.weather.details.total_precip_mm} mm</div>` : ''}
@@ -419,7 +424,6 @@ function showAllToursOnMap() {
             { icon: createIcon(kColor) }
         ).addTo(map).bindPopup(`
             <div class="popup-title">${tour.name}</div>
-            ${tour.winterClosed ? '<div class="popup-detail" style="color:#f59e0b;font-weight:600;">\u2744\uFE0F Vinterstengt vei ved startpunkt</div>' : ''}
             <div class="popup-detail">
                 \u{1F3D4} ${tour.summit.elevation}m &nbsp; \u2197 ${tour.vertical_gain}m &nbsp;
                 <span style="color:${kColor}">\u25CF KAST ${tour.kast || '?'}</span>

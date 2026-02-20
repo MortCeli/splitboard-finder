@@ -234,122 +234,112 @@ function evaluateAvalanche(warnings, targetDate = null) {
 }
 
 // ═══════════════════════════════════════
-// VINTERSTENGTE VEIER — Statens vegvesen NVDB API
+// VINTERSTENGTE FJELLOVERGANGAR
 // ═══════════════════════════════════════
-// Henter vegsegmenter med Vinterdriftsklasse = "Ingen vinterdrift"
-// (type 810, egenskap 9260 = enum_id 19682).
-// Disse veiene har ingen vinterdrift og er normalt stengt hele vinteren.
+// Kjente fjellovergangar som er stengt om vinteren.
+// Desse passane påverkar kjøretid: om ruta mellom brukar og tur
+// kryssar eit stengt pass, må ein køyre omveg.
+// Kjelde: Statens vegvesen fjelloverganger
+// https://www.vegvesen.no/trafikkinformasjon/reiseinformasjon/fjelloverganger/
 
-let _winterClosedSegments = null; // cached etter første kall
+const WINTER_CLOSED_PASSES = [
+    {
+        name: 'Sognefjellsvegen (Fv55)',
+        lat: 61.45, lon: 7.55,
+        closedMonths: [11, 12, 1, 2, 3, 4],  // nov-apr
+        detourKm: 250,  // omveg via E16 Lærdalstunnelen
+    },
+    {
+        name: 'Trollstigen (Fv63)',
+        lat: 62.46, lon: 7.67,
+        closedMonths: [10, 11, 12, 1, 2, 3, 4, 5],  // okt-mai
+        detourKm: 120,  // omveg via E136 + E39
+    },
+    {
+        name: 'Valdresflye (Fv51)',
+        lat: 61.43, lon: 8.85,
+        closedMonths: [11, 12, 1, 2, 3, 4],
+        detourKm: 200,  // omveg via E16
+    },
+    {
+        name: 'Aurlandsfjellet (Fv243)',
+        lat: 60.97, lon: 7.20,
+        closedMonths: [11, 12, 1, 2, 3, 4, 5],
+        detourKm: 100,
+    },
+    {
+        name: 'Gamle Strynefjellsvei (Fv4788)',
+        lat: 61.85, lon: 6.95,
+        closedMonths: [10, 11, 12, 1, 2, 3, 4, 5, 6],
+        detourKm: 60,  // bruk nye Strynefjellet (Rv15) i staden
+    },
+    {
+        name: 'Tyin–Årdal (Fv53)',
+        lat: 61.10, lon: 7.80,
+        closedMonths: [11, 12, 1, 2, 3, 4],
+        detourKm: 180,  // omveg via E16
+    },
+];
 
 /**
- * Hent alle vinterstengte veisegmenter fra NVDB for relevante fylker.
- * Returnerer array med forenklet geometri (array av [lat, lon] punkter per segment).
+ * Finn vinterstengte fjellovergangar som ligg mellom brukaren og turstarten.
+ * Sjekkar om luftlinja brukar→start passerer nær (< radiusKm) eit stengt pass.
+ *
+ * @param {number} userLat
+ * @param {number} userLon
+ * @param {number} tourLat - startpunkt lat
+ * @param {number} tourLon - startpunkt lon
+ * @param {number} month - 0-11 (JS Date.getMonth())
+ * @returns {Array} - liste med stengte pass som ruta kryssar
  */
-async function fetchWinterClosedRoads() {
-    if (_winterClosedSegments) return _winterClosedSegments;
+function findBlockingPasses(userLat, userLon, tourLat, tourLon, month) {
+    const blocking = [];
 
-    // Fylker som dekker våre turer: 15 (Møre og Romsdal), 34 (Innlandet), 46 (Vestland)
-    const url = 'https://nvdbapiles.atlas.vegvesen.no/vegobjekter/810'
-        + '?fylke=15,34,46'
-        + '&egenskap=9260=19682'    // Ingen vinterdrift
-        + '&inkluder=egenskaper,geometri'
-        + '&srid=4326'
-        + '&antall=1000';
+    for (const pass of WINTER_CLOSED_PASSES) {
+        // Er passet stengt denne månaden? (closedMonths bruker 1-12)
+        if (!pass.closedMonths.includes(month + 1)) continue;
 
-    try {
-        const resp = await fetch(url, {
-            headers: { 'X-Client': 'toppturfinner' },
-        });
-        if (!resp.ok) throw new Error(`NVDB HTTP ${resp.status}`);
-        const data = await resp.json();
+        // Sjekk om passet ligg «mellom» brukar og tur.
+        // Bruk projeksjon av passet på linja brukar→tur.
+        // Om projeksjonspunktet er 0-100% av linja og avstand < 30 km,
+        // er det sannsynleg at ruta ville gått over passet.
 
-        const segments = [];
-        for (const obj of (data.objekter || [])) {
-            const wkt = (obj.geometri || {}).wkt || '';
-            // Parse LINESTRING Z (lat lon z, lat lon z, ...)
-            const match = wkt.match(/LINESTRING Z?\s*\((.+)\)/i);
-            if (!match) continue;
+        const dLat = tourLat - userLat;
+        const dLon = tourLon - userLon;
+        const lenSq = dLat * dLat + dLon * dLon;
 
-            const allPoints = match[1].split(',').map(p => {
-                const parts = p.trim().split(/\s+/);
-                return [parseFloat(parts[0]), parseFloat(parts[1])]; // [lat, lon]
+        if (lenSq < 0.0001) continue; // brukar og tur er same stad
+
+        // Projeksjon av pass-punkt på linja (t=0 ved brukar, t=1 ved tur)
+        const t = ((pass.lat - userLat) * dLat + (pass.lon - userLon) * dLon) / lenSq;
+
+        // Passet må ligge mellom brukar og tur (med litt margin)
+        if (t < -0.1 || t > 1.1) continue;
+
+        // Avstand frå passet til næraste punkt på linja
+        const projLat = userLat + t * dLat;
+        const projLon = userLon + t * dLon;
+
+        // Enkel haversine for avstand pass → projeksjon
+        const R = 6371;
+        const pLat = (pass.lat - projLat) * Math.PI / 180;
+        const pLon = (pass.lon - projLon) * Math.PI / 180;
+        const a = Math.sin(pLat / 2) ** 2
+            + Math.cos(projLat * Math.PI / 180) * Math.cos(pass.lat * Math.PI / 180)
+            * Math.sin(pLon / 2) ** 2;
+        const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        // Om passet er innanfor 30 km frå luftlinja, er det relevant
+        if (dist < 30) {
+            blocking.push({
+                name: pass.name,
+                detourKm: pass.detourKm,
+                distFromRoute: Math.round(dist),
             });
-
-            if (allPoints.length >= 2) {
-                // Sampler hvert 10. punkt for lange segmenter (ytelse)
-                // Beholder alltid start- og sluttpunkt
-                let points;
-                if (allPoints.length > 20) {
-                    points = [];
-                    for (let i = 0; i < allPoints.length; i += 10) {
-                        points.push(allPoints[i]);
-                    }
-                    // Sørg for at siste punkt er med
-                    const last = allPoints[allPoints.length - 1];
-                    if (points[points.length - 1] !== last) {
-                        points.push(last);
-                    }
-                } else {
-                    points = allPoints;
-                }
-
-                segments.push({
-                    id: obj.id,
-                    points: points,
-                });
-            }
-        }
-
-        _winterClosedSegments = segments;
-        console.log(`Lastet ${segments.length} vinterstengte veisegmenter fra NVDB`);
-        return segments;
-    } catch (e) {
-        console.warn(`Feil ved henting av vinterstengte veier: ${e.message}`);
-        _winterClosedSegments = [];
-        return [];
-    }
-}
-
-/**
- * Sjekk om et punkt (lat, lon) er nær en vinterstengt vei.
- * Returnerer { closed: bool, distance_km: number }
- * @param {number} lat
- * @param {number} lon
- * @param {number} thresholdKm - maks avstand for treff (default 2 km)
- */
-function checkWinterClosure(lat, lon, thresholdKm = 2) {
-    if (!_winterClosedSegments || !_winterClosedSegments.length) {
-        return { closed: false, distance_km: null };
-    }
-
-    let minDist = Infinity;
-
-    for (const seg of _winterClosedSegments) {
-        for (const pt of seg.points) {
-            // Rask haversine-sjekk
-            const dLat = (pt[0] - lat) * Math.PI / 180;
-            const dLon = (pt[1] - lon) * Math.PI / 180;
-            const a = Math.sin(dLat / 2) ** 2
-                + Math.cos(lat * Math.PI / 180) * Math.cos(pt[0] * Math.PI / 180)
-                * Math.sin(dLon / 2) ** 2;
-            const d = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-            if (d < minDist) {
-                minDist = d;
-            }
-
-            // Tidlig uthopp om vi allerede har funnet treff
-            if (minDist < thresholdKm) {
-                return { closed: true, distance_km: Math.round(minDist * 10) / 10 };
-            }
         }
     }
 
-    return {
-        closed: minDist <= thresholdKm,
-        distance_km: Math.round(minDist * 10) / 10,
-    };
+    return blocking;
 }
 
 // ═══════════════════════════════════════
