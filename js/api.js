@@ -234,37 +234,122 @@ function evaluateAvalanche(warnings, targetDate = null) {
 }
 
 // ═══════════════════════════════════════
-// ROUTING — OSRM
+// VINTERSTENGTE VEIER — Statens vegvesen NVDB API
 // ═══════════════════════════════════════
+// Henter vegsegmenter med Vinterdriftsklasse = "Ingen vinterdrift"
+// (type 810, egenskap 9260 = enum_id 19682).
+// Disse veiene har ingen vinterdrift og er normalt stengt hele vinteren.
 
-async function fetchDriveTime(startLat, startLon, endLat, endLon) {
-    // Cache med avrundede koordinater (2 desimaler)
-    const key = `${startLat.toFixed(2)},${startLon.toFixed(2)};${endLat.toFixed(2)},${endLon.toFixed(2)}`;
-    if (_routeCache.has(key)) return _routeCache.get(key);
+let _winterClosedSegments = null; // cached etter første kall
 
-    // OSRM bruker lon,lat rekkefølge!
-    const url = `https://router.project-osrm.org/route/v1/driving/${startLon},${startLat};${endLon},${endLat}?overview=false`;
+/**
+ * Hent alle vinterstengte veisegmenter fra NVDB for relevante fylker.
+ * Returnerer array med forenklet geometri (array av [lat, lon] punkter per segment).
+ */
+async function fetchWinterClosedRoads() {
+    if (_winterClosedSegments) return _winterClosedSegments;
+
+    // Fylker som dekker våre turer: 15 (Møre og Romsdal), 34 (Innlandet), 46 (Vestland)
+    const url = 'https://nvdbapiles.atlas.vegvesen.no/vegobjekter/810'
+        + '?fylke=15,34,46'
+        + '&egenskap=9260=19682'    // Ingen vinterdrift
+        + '&inkluder=egenskaper,geometri'
+        + '&srid=4326'
+        + '&antall=1000';
 
     try {
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const resp = await fetch(url, {
+            headers: { 'X-Client': 'toppturfinner' },
+        });
+        if (!resp.ok) throw new Error(`NVDB HTTP ${resp.status}`);
         const data = await resp.json();
 
-        if (data.code !== 'Ok' || !data.routes || !data.routes.length) {
-            return null;
+        const segments = [];
+        for (const obj of (data.objekter || [])) {
+            const wkt = (obj.geometri || {}).wkt || '';
+            // Parse LINESTRING Z (lat lon z, lat lon z, ...)
+            const match = wkt.match(/LINESTRING Z?\s*\((.+)\)/i);
+            if (!match) continue;
+
+            const allPoints = match[1].split(',').map(p => {
+                const parts = p.trim().split(/\s+/);
+                return [parseFloat(parts[0]), parseFloat(parts[1])]; // [lat, lon]
+            });
+
+            if (allPoints.length >= 2) {
+                // Sampler hvert 10. punkt for lange segmenter (ytelse)
+                // Beholder alltid start- og sluttpunkt
+                let points;
+                if (allPoints.length > 20) {
+                    points = [];
+                    for (let i = 0; i < allPoints.length; i += 10) {
+                        points.push(allPoints[i]);
+                    }
+                    // Sørg for at siste punkt er med
+                    const last = allPoints[allPoints.length - 1];
+                    if (points[points.length - 1] !== last) {
+                        points.push(last);
+                    }
+                } else {
+                    points = allPoints;
+                }
+
+                segments.push({
+                    id: obj.id,
+                    points: points,
+                });
+            }
         }
 
-        const route = data.routes[0];
-        const distanceKm = Math.round(route.distance / 100) / 10; // 1 desimal
-        const durationHours = Math.round(route.duration / 36) / 100; // 2 desimaler
-
-        const result = { distance_km: distanceKm, duration_hours: durationHours };
-        _routeCache.set(key, result);
-        return result;
+        _winterClosedSegments = segments;
+        console.log(`Lastet ${segments.length} vinterstengte veisegmenter fra NVDB`);
+        return segments;
     } catch (e) {
-        console.warn(`OSRM-feil: ${e.message}`);
-        return null;
+        console.warn(`Feil ved henting av vinterstengte veier: ${e.message}`);
+        _winterClosedSegments = [];
+        return [];
     }
+}
+
+/**
+ * Sjekk om et punkt (lat, lon) er nær en vinterstengt vei.
+ * Returnerer { closed: bool, distance_km: number }
+ * @param {number} lat
+ * @param {number} lon
+ * @param {number} thresholdKm - maks avstand for treff (default 2 km)
+ */
+function checkWinterClosure(lat, lon, thresholdKm = 2) {
+    if (!_winterClosedSegments || !_winterClosedSegments.length) {
+        return { closed: false, distance_km: null };
+    }
+
+    let minDist = Infinity;
+
+    for (const seg of _winterClosedSegments) {
+        for (const pt of seg.points) {
+            // Rask haversine-sjekk
+            const dLat = (pt[0] - lat) * Math.PI / 180;
+            const dLon = (pt[1] - lon) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2
+                + Math.cos(lat * Math.PI / 180) * Math.cos(pt[0] * Math.PI / 180)
+                * Math.sin(dLon / 2) ** 2;
+            const d = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            if (d < minDist) {
+                minDist = d;
+            }
+
+            // Tidlig uthopp om vi allerede har funnet treff
+            if (minDist < thresholdKm) {
+                return { closed: true, distance_km: Math.round(minDist * 10) / 10 };
+            }
+        }
+    }
+
+    return {
+        closed: minDist <= thresholdKm,
+        distance_km: Math.round(minDist * 10) / 10,
+    };
 }
 
 // ═══════════════════════════════════════

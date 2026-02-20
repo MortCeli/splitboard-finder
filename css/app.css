@@ -400,6 +400,12 @@ body {
     line-height: 1.5;
 }
 
+.winter-warning {
+    color: #f59e0b;
+    font-weight: 600;
+    font-size: 12px;
+}
+
 .tour-card-header {
     position: relative;
 }

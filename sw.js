@@ -1,7 +1,7 @@
 // ── Toppturfinner — Service Worker v5 ──
 // Statisk app: ingen backend-API, alle kall direkte til eksterne tjenester.
 
-const STATIC_CACHE = 'static-v5';
+const STATIC_CACHE = 'static-v6';
 const API_CACHE = 'api-v1';
 const MAP_CACHE = 'maps-v1';
 
@@ -50,7 +50,8 @@ self.addEventListener('fetch', (event) => {
     if (url.hostname === 'api.met.no' ||
         url.hostname === 'api01.nve.no' ||
         url.hostname === 'router.project-osrm.org' ||
-        url.hostname === 'api.regobs.no') {
+        url.hostname === 'api.regobs.no' ||
+        url.hostname === 'nvdbapiles.atlas.vegvesen.no') {
         event.respondWith(networkFirst(event.request, API_CACHE));
         return;
     }

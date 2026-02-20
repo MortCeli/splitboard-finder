@@ -56,6 +56,13 @@ async function findTours({
     // ── Steg 1: Beregn kjøretid (haversine-estimat, ingen API-kall) ──
     let toursWithDrive = [];
 
+    // Sjekk om valgt dato er i vintersesong (okt-jun) for vinterstengt-varsling
+    const isWinterSeason = (() => {
+        const d = targetDate ? new Date(targetDate) : new Date();
+        const m = d.getMonth(); // 0-11
+        return m >= 9 || m <= 5; // okt(9)-jun(5)
+    })();
+
     if (userLat != null && userLon != null) {
         for (const tour of tours) {
             const dist = haversineKm(userLat, userLon, tour.start.lat, tour.start.lon);
@@ -66,6 +73,7 @@ async function findTours({
                     dist: Math.round(dist * 1.5 * 10) / 10, // veikm ≈ luftlinje × 1.5
                     driveHours: Math.round(driveHours * 10) / 10,
                     driveSource: 'estimat',
+                    winterClosed: isWinterSeason && tour.winterClosed,
                 });
             }
         }
@@ -75,6 +83,7 @@ async function findTours({
             dist: null,
             driveHours: null,
             driveSource: null,
+            winterClosed: isWinterSeason && tour.winterClosed,
         }));
     }
 
@@ -205,6 +214,7 @@ async function findTours({
             total_score: Math.round(totalScore * 10) / 10,
             weather: weatherEval,
             avalanche: avalEval,
+            winterClosed: item.winterClosed || false,
             distance_km: item.dist != null ? Math.round(item.dist * 10) / 10 : null,
             drive_hours: item.driveHours != null ? Math.round(item.driveHours * 10) / 10 : null,
             drive_source: item.driveSource,

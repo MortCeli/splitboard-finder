@@ -26,9 +26,16 @@ function isNedkjoring(props) {
 }
 
 async function loadTours() {
-    const resp = await fetch('data/turer.geojson');
-    if (!resp.ok) throw new Error('Kunne ikke laste turer.geojson');
-    GEOJSON_RAW = await resp.json();
+    // Last GeoJSON og vinterstengte veier parallelt
+    const [geoResp] = await Promise.all([
+        fetch('data/turer.geojson'),
+        fetchWinterClosedRoads().catch(e => {
+            console.warn('Kunne ikke laste vinterstengte veier:', e);
+        }),
+    ]);
+
+    if (!geoResp.ok) throw new Error('Kunne ikke laste turer.geojson');
+    GEOJSON_RAW = await geoResp.json();
 
     const mainRoutes = new Map();   // Rutenavn -> tour object
     const altRoutes = [];           // nedkjøringsalternativer
@@ -53,6 +60,10 @@ async function loadTours() {
         }
 
         const name = props.Rutenavn || '';
+
+        // Sjekk om startpunkt er nær en vinterstengt vei
+        const winterCheck = checkWinterClosure(startCoord[1], startCoord[0]);
+
         const tour = {
             id: props.fid || name,
             name: name,
@@ -71,6 +82,7 @@ async function loadTours() {
                 elevation: Math.round(maxZ),
             },
             vertical_gain: Math.round(maxZ - minZ),
+            winterClosed: winterCheck.closed,
             // Rutelinje for kart (alle punkter som [lat, lon] for Leaflet)
             routeCoords: coords.map(c => [c[1], c[0]]),
             altRoutes: [], // fylles inn under
@@ -95,6 +107,7 @@ async function loadTours() {
         }
     }
 
-    console.log(`Lastet ${TOURS.length} turer fra GeoJSON (${altRoutes.length} nedkjoringsalt.)`);
+    const winterCount = TOURS.filter(t => t.winterClosed).length;
+    console.log(`Lastet ${TOURS.length} turer fra GeoJSON (${altRoutes.length} nedkjoringsalt., ${winterCount} med vinterstengt vei)`);
     return TOURS;
 }
