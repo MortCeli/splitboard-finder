@@ -51,17 +51,33 @@ async function findTours({
 
     if (onProgress) onProgress(`Filtrert: ${tours.length} turer funnet`);
 
-    // ── Steg 1: Beregn kjøretid for alle turer (parallelt) ──
+    // ── Steg 1: Beregn kjøretid (gruppert per startpunkt, maks 1 OSRM-kall per 1km) ──
     if (onProgress) onProgress('Beregner kjøretid...');
 
     let toursWithDrive = [];
 
     if (userLat != null && userLon != null) {
-        const drivePromises = tours.map(async (tour) => {
-            const osrmResult = await fetchDriveTime(
-                userLat, userLon,
-                tour.start.lat, tour.start.lon
-            );
+        // Grupper startpunkter innenfor 1km av hverandre
+        const startGroups = [];  // [{lat, lon, tours: [...]}]
+        for (const tour of tours) {
+            let found = false;
+            for (const group of startGroups) {
+                if (haversineKm(tour.start.lat, tour.start.lon, group.lat, group.lon) < 1.0) {
+                    group.tours.push(tour);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                startGroups.push({ lat: tour.start.lat, lon: tour.start.lon, tours: [tour] });
+            }
+        }
+
+        if (onProgress) onProgress(`Beregner kjøretid (${startGroups.length} startpunkter)...`);
+
+        // Ett OSRM-kall per gruppe
+        const groupPromises = startGroups.map(async (group) => {
+            const osrmResult = await fetchDriveTime(userLat, userLon, group.lat, group.lon);
 
             let dist, driveHours, driveSource;
             if (osrmResult) {
@@ -69,18 +85,18 @@ async function findTours({
                 driveHours = osrmResult.duration_hours;
                 driveSource = 'osrm';
             } else {
-                dist = haversineKm(userLat, userLon, tour.start.lat, tour.start.lon);
+                dist = haversineKm(userLat, userLon, group.lat, group.lon);
                 driveHours = estimateDriveHours(dist);
                 driveSource = 'estimate';
             }
 
-            if (driveHours > maxDriveHours) return null;
+            if (driveHours > maxDriveHours) return [];
 
-            return { tour, dist, driveHours, driveSource };
+            return group.tours.map(tour => ({ tour, dist, driveHours, driveSource }));
         });
 
-        const driveResults = await Promise.all(drivePromises);
-        toursWithDrive = driveResults.filter(r => r !== null);
+        const groupResults = await Promise.all(groupPromises);
+        toursWithDrive = groupResults.flat();
     } else {
         toursWithDrive = tours.map(tour => ({
             tour,
