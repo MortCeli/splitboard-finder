@@ -14,11 +14,20 @@ L.tileLayer('https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/
     attribution: '&copy; <a href="https://kartverket.no">Kartverket</a>',
 }).addTo(map);
 
-// ── NVE Bratthet + utlopssoner (WMS overlay) ──
+// ── NVE Bratthet + utlopssoner ──
+// WMTS tile-lag (forhåndsgenerert, raskere enn WMS)
+const nveBratthetAlle = L.tileLayer(
+    'https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_med_utlop_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_med_utlop_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png', {
+    opacity: 0.55,
+    maxZoom: 18,
+    attribution: '&copy; <a href="https://nve.no">NVE</a> Bratthet/utl\u00f8p',
+});
+
+// WMS-lag for individuelle lag (Norge = layers 6-9)
 const nveWmsUrl = 'https://gis3.nve.no/arcgis/services/wmts/Bratthet_med_utlop_2024/MapServer/WMSServer';
 
 const nveBratthet = L.tileLayer.wms(nveWmsUrl, {
-    layers: '1',
+    layers: '9',
     format: 'image/png',
     transparent: true,
     opacity: 0.55,
@@ -26,7 +35,7 @@ const nveBratthet = L.tileLayer.wms(nveWmsUrl, {
 });
 
 const nveUtlopKort = L.tileLayer.wms(nveWmsUrl, {
-    layers: '2',
+    layers: '8',
     format: 'image/png',
     transparent: true,
     opacity: 0.45,
@@ -34,7 +43,7 @@ const nveUtlopKort = L.tileLayer.wms(nveWmsUrl, {
 });
 
 const nveUtlopMiddels = L.tileLayer.wms(nveWmsUrl, {
-    layers: '3',
+    layers: '7',
     format: 'image/png',
     transparent: true,
     opacity: 0.35,
@@ -42,7 +51,7 @@ const nveUtlopMiddels = L.tileLayer.wms(nveWmsUrl, {
 });
 
 const nveUtlopLang = L.tileLayer.wms(nveWmsUrl, {
-    layers: '4',
+    layers: '6',
     format: 'image/png',
     transparent: true,
     opacity: 0.30,
@@ -51,10 +60,11 @@ const nveUtlopLang = L.tileLayer.wms(nveWmsUrl, {
 
 // Layer control
 const overlays = {
+    'Bratthet + utl\u00f8p (alle)': nveBratthetAlle,
     'Bratthet (>30\u00b0)': nveBratthet,
-    'Utlop kort': nveUtlopKort,
-    'Utlop middels': nveUtlopMiddels,
-    'Utlop lang': nveUtlopLang,
+    'Utl\u00f8p kort': nveUtlopKort,
+    'Utl\u00f8p middels': nveUtlopMiddels,
+    'Utl\u00f8p lang': nveUtlopLang,
 };
 
 L.control.layers(null, overlays, {
