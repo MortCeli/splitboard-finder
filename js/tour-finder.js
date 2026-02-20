@@ -12,8 +12,10 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function estimateDriveHours(distanceKm) {
-    return distanceKm / 55;
+function estimateDriveHours(airDistKm) {
+    // Norske fjellveier: luftlinje × 1.5, snitt 50 km/t
+    const roadDist = airDistKm * 1.5;
+    return roadDist / 50;
 }
 
 /**
@@ -51,52 +53,22 @@ async function findTours({
 
     if (onProgress) onProgress(`Filtrert: ${tours.length} turer funnet`);
 
-    // ── Steg 1: Beregn kjøretid (gruppert per startpunkt, maks 1 OSRM-kall per 1km) ──
-    if (onProgress) onProgress('Beregner kjøretid...');
-
+    // ── Steg 1: Beregn kjøretid (haversine-estimat, ingen API-kall) ──
     let toursWithDrive = [];
 
     if (userLat != null && userLon != null) {
-        // Grupper startpunkter innenfor 1km av hverandre
-        const startGroups = [];  // [{lat, lon, tours: [...]}]
         for (const tour of tours) {
-            let found = false;
-            for (const group of startGroups) {
-                if (haversineKm(tour.start.lat, tour.start.lon, group.lat, group.lon) < 1.0) {
-                    group.tours.push(tour);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                startGroups.push({ lat: tour.start.lat, lon: tour.start.lon, tours: [tour] });
+            const dist = haversineKm(userLat, userLon, tour.start.lat, tour.start.lon);
+            const driveHours = estimateDriveHours(dist);
+            if (driveHours <= maxDriveHours) {
+                toursWithDrive.push({
+                    tour,
+                    dist: Math.round(dist * 1.5 * 10) / 10, // veikm ≈ luftlinje × 1.5
+                    driveHours: Math.round(driveHours * 10) / 10,
+                    driveSource: 'estimat',
+                });
             }
         }
-
-        if (onProgress) onProgress(`Beregner kjøretid (${startGroups.length} startpunkter)...`);
-
-        // Ett OSRM-kall per gruppe
-        const groupPromises = startGroups.map(async (group) => {
-            const osrmResult = await fetchDriveTime(userLat, userLon, group.lat, group.lon);
-
-            let dist, driveHours, driveSource;
-            if (osrmResult) {
-                dist = osrmResult.distance_km;
-                driveHours = osrmResult.duration_hours;
-                driveSource = 'osrm';
-            } else {
-                dist = haversineKm(userLat, userLon, group.lat, group.lon);
-                driveHours = estimateDriveHours(dist);
-                driveSource = 'estimate';
-            }
-
-            if (driveHours > maxDriveHours) return [];
-
-            return group.tours.map(tour => ({ tour, dist, driveHours, driveSource }));
-        });
-
-        const groupResults = await Promise.all(groupPromises);
-        toursWithDrive = groupResults.flat();
     } else {
         toursWithDrive = tours.map(tour => ({
             tour,
