@@ -58,6 +58,8 @@ L.control.layers(null, overlays, {
 let userLat = null;
 let userLon = null;
 let mapLayers = [];      // alt som legges på kartet (markers, linjer)
+let routeLayers = new Map();  // tourId → { lines: [], markers: [] }
+let highlightedTourId = null;
 let userMarker = null;
 let tourResults = [];
 let currentSort = 'score';
@@ -152,11 +154,15 @@ function getLocation() {
 function clearMapLayers() {
     mapLayers.forEach(m => map.removeLayer(m));
     mapLayers = [];
+    routeLayers.clear();
+    highlightedTourId = null;
 }
 
 // ── Tegn tur-rute på kartet ──
 function drawRoute(tour, color, weight, dashArray) {
     if (!tour.routeCoords || tour.routeCoords.length < 2) return;
+
+    const lines = [];
 
     // Hovedrute
     const line = L.polyline(tour.routeCoords, {
@@ -166,6 +172,7 @@ function drawRoute(tour, color, weight, dashArray) {
         dashArray: dashArray || null,
     }).addTo(map);
     mapLayers.push(line);
+    lines.push(line);
 
     // Nedkjøringsalternativer (stiplet)
     if (tour.altRoutes) {
@@ -177,8 +184,54 @@ function drawRoute(tour, color, weight, dashArray) {
                 dashArray: '8,6',
             }).addTo(map);
             mapLayers.push(altLine);
+            lines.push(altLine);
         }
     }
+
+    return lines;
+}
+
+// ── Highlight valgt rute ──
+function highlightTour(tourId) {
+    // Fjern forrige highlight
+    if (highlightedTourId === tourId) return;
+    highlightedTourId = tourId;
+
+    routeLayers.forEach((layers, id) => {
+        const isSelected = id === tourId;
+        layers.lines.forEach(line => {
+            if (isSelected) {
+                line.setStyle({ weight: 6, opacity: 1.0 });
+                line.bringToFront();
+            } else {
+                line.setStyle({ weight: 2, opacity: 0.3 });
+            }
+        });
+        layers.markers.forEach(marker => {
+            if (marker.setOpacity) {
+                marker.setOpacity(isSelected ? 1.0 : 0.3);
+            } else if (marker.setStyle) {
+                marker.setStyle({ opacity: isSelected ? 0.7 : 0.2, fillOpacity: isSelected ? 0.7 : 0.2 });
+            }
+        });
+    });
+}
+
+// ── Reset highlight (vis alle likt) ──
+function resetHighlight() {
+    highlightedTourId = null;
+    routeLayers.forEach((layers) => {
+        layers.lines.forEach(line => {
+            line.setStyle({ weight: 3, opacity: 0.8 });
+        });
+        layers.markers.forEach(marker => {
+            if (marker.setOpacity) {
+                marker.setOpacity(1.0);
+            } else if (marker.setStyle) {
+                marker.setStyle({ opacity: 0.7, fillOpacity: 0.7 });
+            }
+        });
+    });
 }
 
 // ── Sorting ──
@@ -232,7 +285,7 @@ function renderResults() {
         const kColor = kastColor(tour.kast);
 
         // Tegn rute på kartet
-        drawRoute(tour, kColor, 3);
+        const routeLines = drawRoute(tour, kColor, 3) || [];
 
         // Topp-markør
         const marker = L.marker(
@@ -270,6 +323,12 @@ function renderResults() {
             { radius: 5, color: '#5ba4f5', fillColor: '#5ba4f5', fillOpacity: 0.7, weight: 1 }
         ).addTo(map).bindPopup(`\u{1F17F} ${tour.start.name}`);
         mapLayers.push(startMarker);
+
+        // Lagre referanser for highlight
+        routeLayers.set(tour.id, {
+            lines: routeLines,
+            markers: [marker, startMarker],
+        });
 
         // Hjelpetekster
         let driveText = '';
@@ -344,6 +403,8 @@ function renderResults() {
             e.stopPropagation();
             document.querySelectorAll('.tour-card').forEach(c => c.classList.remove('active'));
             card.classList.add('active');
+            // Highlight valgt rute (tykk strek, dim andre)
+            highlightTour(tour.id);
             // Zoom til hele ruta
             if (tour.routeCoords && tour.routeCoords.length > 1) {
                 map.fitBounds(L.latLngBounds(tour.routeCoords), { padding: [40, 40], maxZoom: 14 });
@@ -443,6 +504,14 @@ function showAllToursOnMap() {
 // ── Event listeners ──
 document.getElementById('searchBtn').addEventListener('click', searchTours);
 
+// Klikk på kartet → reset highlight
+map.on('click', () => {
+    if (highlightedTourId) {
+        resetHighlight();
+        document.querySelectorAll('.tour-card').forEach(c => c.classList.remove('active'));
+    }
+});
+
 document.getElementById('sortSelect').addEventListener('change', (e) => {
     currentSort = e.target.value;
     if (tourResults.length) renderResults();
@@ -494,6 +563,33 @@ if (window.matchMedia('(display-mode: standalone)').matches ||
     window.navigator.standalone === true) {
     document.body.classList.add('pwa-standalone');
 }
+
+// ── Fullskjerm-knapp ──
+const fullscreenBtn = document.createElement('button');
+fullscreenBtn.className = 'fullscreen-btn';
+fullscreenBtn.innerHTML = '\u26F6';
+fullscreenBtn.title = 'Fullskjerm';
+document.getElementById('map').appendChild(fullscreenBtn);
+
+fullscreenBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.body.classList.toggle('map-fullscreen');
+    const isFullscreen = document.body.classList.contains('map-fullscreen');
+    fullscreenBtn.innerHTML = isFullscreen ? '\u2716' : '\u26F6';
+    fullscreenBtn.title = isFullscreen ? 'Lukk fullskjerm' : 'Fullskjerm';
+    // Leaflet trenger å oppdatere størrelsen
+    setTimeout(() => map.invalidateSize(), 100);
+});
+
+// Escape-tast for å lukke fullskjerm
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.classList.contains('map-fullscreen')) {
+        document.body.classList.remove('map-fullscreen');
+        fullscreenBtn.innerHTML = '\u26F6';
+        fullscreenBtn.title = 'Fullskjerm';
+        setTimeout(() => map.invalidateSize(), 100);
+    }
+});
 
 // ── Init: Last turer fra GeoJSON, deretter vis på kart ──
 getLocation();

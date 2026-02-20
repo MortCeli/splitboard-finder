@@ -1,7 +1,7 @@
 // ── Toppturfinner — Service Worker v5 ──
 // Statisk app: ingen backend-API, alle kall direkte til eksterne tjenester.
 
-const STATIC_CACHE = 'static-v8';
+const STATIC_CACHE = 'static-v9';
 const API_CACHE = 'api-v1';
 const MAP_CACHE = 'maps-v1';
 
